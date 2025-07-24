@@ -1,73 +1,56 @@
 import ArbolSufijos.Trie
-
 package object ArbolSufijos {
   // Definiendo otra estructura para manipular Seq[Seq[Char]]
-  sealed abstract class Trie
-  case class Nodo (car: Char, marcada: Boolean, hijos: Vector[Trie]) extends Trie
+  abstract class Trie
+  case class Nodo (car: Char, marcada: Boolean, hijos: List[Trie]) extends Trie
   case class Hoja (car: Char, marcada: Boolean) extends Trie
 
-
-  def raiz(trie: Trie): Char = {
-    trie match {
+  def raiz(t: Trie): Char = {
+    t match {
       case Nodo (c, _, _) => c
       case Hoja (c, _) => c
     }
   }
 
-
-  def mark(trie: Trie): Boolean = {
-    trie match {
-      case Nodo (_, m, _) => m
-      case Hoja (_, m) => m
+  def cabezas(t: Trie): Seq[Char] = {
+    t match {
+      case Nodo (_, _, lt) => lt.map(t => raiz(t))
+      case Hoja (c, _) => Seq[Char](c)
     }
   }
 
+  def pertenece(s: Seq[Char], t: Trie): Boolean = (s, t) match {
+    case (Nil, _) => true
+    case (c +: cs, Nodo(_, _, hijos)) =>
+      cabezas(t).contains(c) && pertenece(cs, hijos.find(raiz(_) == c).get)
+    case (c +: Nil, Hoja(car, _)) => c == car
+    case _ => false
+  }
+def adicionar(s: Seq[Char], trie: Trie): Trie = (s, trie) match {
+    case (Nil, _) => trie
 
-  def childrenNodes(trie: Trie): Vector[Trie] =
-    trie match {
-      case Nodo (_, _, children) => children
-      case _ => Vector()
-    }
-
-
-  def pertenece(sequence: Seq[Char], trie: Trie): Boolean =
-    if (sequence.isEmpty) mark(trie)
-    else trie match {
-      case Nodo(_, _, children) => {
-        children.find(raiz(_) == sequence.head) match {
-          case Some(child) => pertenece(sequence.drop(1), child)
-          case None => false
-        }
+    case (c +: cs, n @ Nodo(_, _, hijos)) =>
+      if (cabezas(n).contains(c)) {
+        val hijoActual = hijos.find(raiz(_) == c).get
+        val nuevoHijo = adicionar(cs, hijoActual)
+        Nodo(raiz(n), n.marcada, nuevoHijo :: hijos.filterNot(_ == hijoActual))
+      } else {
+        val nuevoHijo = if (cs.isEmpty) Hoja(c, true) else adicionar(cs, Nodo(c, false, Nil))
+        Nodo(raiz(n), n.marcada, nuevoHijo :: hijos)
       }
-      case Hoja(car, marcada) => marcada
-    }
 
-
-  def createSubtrie(s: Vector[Char]): Trie =
-    if (s.length <= 1 ) Hoja(s.head, true)
-    else Nodo(s.head, s.length == 1, Vector(createSubtrie(s.drop(1))))
-
-
-  def adicionar(s: Vector[Char], originalTrie: Trie): Trie =
-
-    if ( pertenece(s, originalTrie) || s.isEmpty) originalTrie
-    //else if ( s.isEmpty ) Hoja(s.head, true)
-    else originalTrie match {
-      case Nodo(a, b, lt) => {
-        val newSubtrieToAdd = lt.find(raiz(_) == s.head) match {
-          case Some(child) =>
-            lt.filterNot(_ == child) :++ Vector(adicionar(s.drop(1), child))
-          case None => lt ++: Vector(createSubtrie(s))
-        }
-        Nodo(s.head, b, newSubtrieToAdd)
+    case (c +: cs, h @ Hoja(car, _)) =>
+      if (car == c) {
+        if (cs.isEmpty) Hoja(car, true)
+        else Nodo(car, h.marcada, List(adicionar(cs, Nodo(c, false, Nil))))
+      } else {
+        Nodo(' ', false, List(h, adicionar(s, Nodo(c, false, Nil))))
       }
-      case Hoja(a, b) => originalTrie
-    }
+  }
 
-
-  def arbolDeSufijos(SoS: Seq[Seq[Char]]): Trie =
-    SoS.foldLeft(Nodo('_', false, Vector()).asInstanceOf[Trie])
-    { (partialBuildedTrie, s) => adicionar(s.toVector, partialBuildedTrie) }
-
-
+  def arbolDeSufijos(ss: Seq[Seq[Char]]): Trie = {
+    ss.foldLeft(Nodo(' ', false, Nil): Trie) { (trie, s) =>
+      adicionar(s, trie)
+    }
+  }
 }
