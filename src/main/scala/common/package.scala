@@ -1,45 +1,51 @@
+import java.util.concurrent._
+import scala.util.DynamicVariable
+
 package object common {
+  val forkJoinPool = new ForkJoinPool
 
-  import scala.concurrent._
-  import ExecutionContext.Implicits.global
-  import scala.concurrent.duration._
-
-  /**
-   * Aplica una función en paralelo a los elementos de una secuencia.
-   */
-  def parMap[A, B](seq: Seq[A])(f: A => B): Seq[B] = {
-    Await.result(Future.traverse(seq)(x => Future(f(x))), Duration.Inf)
+  abstract class TaskScheduler {
+    def schedule[T](body: => T): ForkJoinTask[T]
+    def parallel[A, B](taskA: => A, taskB: => B): (A, B) = {
+      val right = task {
+        taskB
+      }
+      val left = taskA
+      (left, right.join())
+    }
   }
 
-  /**
-   * Filtra una secuencia en paralelo usando un predicado.
-   */
-  def parFilter[A](seq: Seq[A])(p: A => Boolean): Seq[A] = {
-    Await.result(
-      Future.traverse(seq)(x => Future((x, p(x)))).map(_.filter(_._2).map(_._1)),
-      Duration.Inf
-    )
+  class DefaultTaskScheduler extends TaskScheduler {
+    def schedule[T](body: => T): ForkJoinTask[T] = {
+      val t = new RecursiveTask[T] {
+        def compute = body
+      }
+      Thread.currentThread match {
+        case wt: ForkJoinWorkerThread =>
+          t.fork()
+        case _ =>
+          forkJoinPool.execute(t)
+      }
+      t
+    }
   }
 
-  /**
-   * Producto cartesiano concatenado: combina cada par de secuencias del conjunto consigo mismo.
-   */
-  def cartesianConcat(set: Set[Seq[Char]]): Set[Seq[Char]] = {
-    for {
-      s1 <- set
-      s2 <- set
-    } yield s1 ++ s2
+  val scheduler =
+    new DynamicVariable[TaskScheduler](new DefaultTaskScheduler)
+
+  def task[T](body: => T): ForkJoinTask[T] = {
+    scheduler.value.schedule(body)
   }
 
-  /**
-   * Mide el tiempo de ejecución de un bloque de código.
-   * Devuelve una tupla con el resultado del bloque y el tiempo en milisegundos.
-   */
-  def medirTiempo[A](bloque: => A): (A, Long) = {
-    val t0 = System.nanoTime()
-    val resultado = bloque
-    val t1 = System.nanoTime()
-    (resultado, (t1 - t0) / 1000000) // en milisegundos
+  def parallel[A, B](taskA: => A, taskB: => B): (A, B) = {
+    scheduler.value.parallel(taskA, taskB)
   }
 
+  def parallel[A, B, C, D](taskA: => A, taskB: => B, taskC: => C, taskD: => D): (A, B, C, D) = {
+    val ta = task { taskA }
+    val tb = task { taskB }
+    val tc = task { taskC }
+    val td = taskD
+    (ta.join(), tb.join(), tc.join(), td)
+  }
 }
