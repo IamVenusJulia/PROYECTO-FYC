@@ -1,24 +1,22 @@
 import Oraculo._
-import common._
+import ArbolSufijos._
 
-import Oraculo._
 package object ReconstCadenas {
   def reconstruirCadenaIngenuo(n: Int, o: Oraculo): Seq[Char] = {
     val alfabeto = Seq('a', 'c', 'g', 't')
 
-    def generarCadenas(n: Int): Seq[Seq[Char]] = {
-      if (n == 0) Seq(Seq())
+    def generarCadenas(n: Int): LazyList[Seq[Char]] = {
+      if (n == 0) LazyList(Seq.empty)
       else for {
-        c <- alfabeto
+        c <- alfabeto.to(LazyList)
         sub <- generarCadenas(n - 1)
       } yield c +: sub
     }
 
-    for (cadena <- generarCadenas(n)) {
-      if (o(cadena)) return cadena
-    }
-    Seq()
+    generarCadenas(n).find(o).getOrElse(Seq())
   }
+
+
   def reconstruirCadenaMejorado(n: Int, o: Oraculo): Seq[Char] = {
     val alfabeto = Seq('a', 'c', 'g', 't')
     var SC: Set[Seq[Char]] = Set(Seq())
@@ -62,5 +60,59 @@ package object ReconstCadenas {
     Seq()
   }
 
+  def reconstruirCadenaTurboMejorada(n: Int, o: Oraculo): Seq[Char] = {
+    val alfabeto = Seq('a', 'c', 'g', 't')
 
+    def filtrar(SC: Seq[Seq[Char]], k: Int): Seq[Seq[Char]] = {
+      (for {
+        s1 <- SC
+        s2 <- SC
+        s = s1 ++ s2
+        subcadenas = s.sliding(k).toSet
+        if subcadenas.forall(SC.contains)
+        if o(s)
+      } yield s)
+    }
+
+    def iterar(SC: Seq[Seq[Char]], k: Int): Seq[Char] = {
+      if (k > n) SC.find(_.length == n).getOrElse(Seq.empty)
+      else {
+        val nuevasCadenas = filtrar(SC, k)
+        if (nuevasCadenas.isEmpty) Seq.empty
+        else iterar(SC ++ nuevasCadenas, k * 2)
+      }
+    }
+
+    val inicial = alfabeto.filter(c => o(Seq(c))).map(Seq(_))
+    iterar(inicial, 1)
+  }
+
+  def reconstruirCadenaTurboAcelerada(n: Int, o: Oraculo): Seq[Char] = {
+
+    def filtrar(SC: Seq[Seq[Char]], k: Int): Seq[Seq[Char]] = {
+      val arbolSc: Trie = arbolDeSufijos(SC)
+      (for {
+        s1 <- SC
+        s2 <- SC
+        s = s1 ++ s2
+        if (0 to k).forall { i =>
+          val sub = s.slice(i, i + k)
+          pertenece(sub, arbolSc)
+        }
+        if o(s)
+      } yield s)
+    }
+
+    def iterar(SC: Seq[Seq[Char]], k: Int): Seq[Char] = {
+      if (k > n) SC.find(_.length == n).getOrElse(Seq.empty)
+      else {
+        val nuevasCadenas = filtrar(SC, k)
+        if (nuevasCadenas.isEmpty) Seq.empty
+        else iterar(SC ++ nuevasCadenas, k * 2)
+      }
+    }
+
+    val inicial = alfabeto.filter(c => o(Seq(c))).map(Seq(_))
+    iterar(inicial, 1)
+  }
 }
